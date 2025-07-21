@@ -1,103 +1,396 @@
-import Image from "next/image";
+"use client";
+
+import React, { useState, useRef, useEffect } from "react";
+import { Box, Typography } from "@mui/material";
+
+import PdfUpload from "../components/ui/PdfUpload";
+import { TextField, IconButton, CircularProgress } from "@mui/material";
+import { Send as SendIcon, AttachFile as FileIcon } from "@mui/icons-material";
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+	const [selectedFile, setSelectedFile] = useState<File | null>(null);
+	const [chat, setChat] = useState<{ role: "user" | "ai"; message: string }[]>(
+		[]
+	);
+	const [input, setInput] = useState("");
+	const [loading, setLoading] = useState(false);
+	const [pdfUploaded, setPdfUploaded] = useState(false);
+	const [aiBuffer, setAiBuffer] = useState(""); // For streaming AI response
+	const messagesEndRef = useRef<HTMLDivElement>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+	// Store the uploaded PDF id or token if needed
+	const [pdfId, setPdfId] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (selectedFile) {
+			uploadPdf(selectedFile);
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [selectedFile]);
+
+	const uploadPdf = async (file: File) => {
+		setLoading(true);
+		setPdfUploaded(false);
+		setPdfId(null);
+		setChat([]);
+		setAiBuffer("");
+		const formData = new FormData();
+		formData.append("file", file);
+
+		try {
+			const res = await fetch(
+				"http://localhost:8000/api/document/upload_pdf/",
+				{
+					method: "POST",
+					body: formData,
+				}
+			);
+			if (!res.ok) throw new Error("Failed to upload PDF");
+			const data = await res.json();
+			setPdfUploaded(true);
+			setPdfId(data.id || null);
+			setChat([
+				{
+					role: "ai",
+					message:
+						"PDF uploaded and processed. You can now ask questions about your document.",
+				},
+			]);
+		} catch (e: any) {
+			setChat([
+				{
+					role: "ai",
+					message: "Error uploading PDF: " + (e?.message || e),
+				},
+			]);
+		}
+		setLoading(false);
+	};
+
+	const handleSend = async () => {
+		if (!input.trim() || !pdfUploaded || !pdfId) return;
+
+		const userMessage = input.trim();
+		setChat((prev) => [...prev, { role: "user", message: userMessage }]);
+		setInput("");
+		setLoading(true);
+		setAiBuffer("");
+
+		try {
+			const response = await fetch("http://localhost:8000/api/document/ask/", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					pdf_id: pdfId,
+					question: userMessage,
+				}),
+			});
+
+			if (!response.ok || !response.body) {
+				throw new Error("Failed to get AI response");
+			}
+
+			const reader = response.body.getReader();
+			const decoder = new TextDecoder("utf-8");
+			let done = false;
+			let fullMessage = "";
+
+			while (!done) {
+				const { value, done: readerDone } = await reader.read();
+				done = readerDone;
+				const chunk = decoder.decode(value || new Uint8Array(), {
+					stream: !done,
+				});
+
+				// Split on newlines and process SSE lines
+				const lines = chunk.split("\n");
+				for (let line of lines) {
+					line = line.trim();
+					if (!line) continue;
+					if (line === "data: [DONE]") {
+						done = true;
+						break;
+					}
+					if (line.startsWith("data: ")) {
+						try {
+							const parsed = JSON.parse(line.slice(6));
+							if (parsed.type === "message" && parsed.content) {
+								fullMessage += parsed.content;
+								setAiBuffer((prev) => prev + parsed.content);
+							}
+						} catch {
+							// Ignore JSON parse errors from partial chunks
+						}
+					}
+				}
+			}
+
+			// Finalize chat after streaming ends
+			setChat((prev) => [...prev, { role: "ai", message: fullMessage }]);
+			setAiBuffer("");
+		} catch (e: any) {
+			setChat((prev) => [
+				...prev,
+				{ role: "ai", message: "Error: " + (e?.message || e) },
+			]);
+			setAiBuffer("");
+		}
+		setLoading(false);
+	};
+
+	return (
+		<Box
+			sx={{
+				height: "100vh",
+				display: "flex",
+				flexDirection: "column",
+				bgcolor: "#f7f7f8",
+				fontFamily: '"Segoe UI", Tahoma, Geneva, Verdana, sans-serif',
+			}}
+		>
+			{/* Simple Header */}
+			<Box
+				sx={{
+					borderBottom: "1px solid #e5e5e5",
+					bgcolor: "white",
+					px: 4,
+					py: 2,
+					display: "flex",
+					alignItems: "center",
+					gap: 2,
+				}}
+			>
+				<Typography variant="h6" fontWeight="600" color="#202123">
+					PDF Chat Assistant
+				</Typography>
+				{selectedFile && (
+					<>
+						<Box sx={{ width: 1, height: 20, bgcolor: "#e5e5e5" }} />
+						<Typography
+							variant="body2"
+							color="#8e8ea0"
+							sx={{ fontSize: "14px" }}
+						>
+							{selectedFile.name}
+						</Typography>
+					</>
+				)}
+			</Box>
+
+			{!selectedFile ? (
+				<Box
+					sx={{
+						flex: 1,
+						display: "flex",
+						alignItems: "center",
+						justifyContent: "center",
+						flexDirection: "column",
+						gap: 3,
+					}}
+				>
+					<FileIcon sx={{ fontSize: 48, color: "#8e8ea0" }} />
+					<Typography variant="h6" color="#202123" textAlign="center">
+						Upload a PDF to start chatting
+					</Typography>
+					<Typography
+						variant="body2"
+						color="#8e8ea0"
+						textAlign="center"
+						maxWidth="400px"
+					>
+						Upload your PDF document and ask questions about its content
+					</Typography>
+					<PdfUpload onFileSelected={setSelectedFile} />
+				</Box>
+			) : (
+				<>
+					{/* Messages Area */}
+					<Box
+						sx={{
+							flex: 1,
+							overflow: "auto",
+							px: 4,
+							py: 3,
+						}}
+					>
+						{chat.map((msg, idx) => (
+							<Box key={idx} sx={{ mb: 6 }}>
+								<Typography
+									variant="body2"
+									sx={{
+										color: "#8e8ea0",
+										mb: 1,
+										fontSize: "12px",
+										textTransform: "uppercase",
+										letterSpacing: "0.5px",
+									}}
+								>
+									{msg.role === "user" ? "You" : "Assistant"}
+								</Typography>
+								<Typography
+									variant="body1"
+									sx={{
+										color: "#202123",
+										lineHeight: 1.6,
+										fontSize: "16px",
+										whiteSpace: "pre-wrap",
+									}}
+								>
+									{msg.message}
+								</Typography>
+							</Box>
+						))}
+
+						{/* Streaming response */}
+						{aiBuffer && (
+							<Box sx={{ mb: 6 }}>
+								<Typography
+									variant="body2"
+									sx={{
+										color: "#8e8ea0",
+										mb: 1,
+										fontSize: "12px",
+										textTransform: "uppercase",
+										letterSpacing: "0.5px",
+									}}
+								>
+									Assistant
+								</Typography>
+								<Typography
+									variant="body1"
+									sx={{
+										color: "#202123",
+										lineHeight: 1.6,
+										fontSize: "16px",
+										whiteSpace: "pre-wrap",
+									}}
+								>
+									{aiBuffer}
+								</Typography>
+							</Box>
+						)}
+
+						{loading && !aiBuffer && (
+							<Box sx={{ mb: 6 }}>
+								<Typography
+									variant="body2"
+									sx={{
+										color: "#8e8ea0",
+										mb: 1,
+										fontSize: "12px",
+										textTransform: "uppercase",
+										letterSpacing: "0.5px",
+									}}
+								>
+									Assistant
+								</Typography>
+								<Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+									<CircularProgress size={16} sx={{ color: "#8e8ea0" }} />
+									<Typography variant="body1" color="#8e8ea0">
+										Thinking...
+									</Typography>
+								</Box>
+							</Box>
+						)}
+
+						<div ref={messagesEndRef} />
+					</Box>
+
+					{/* Input Area */}
+					<Box
+						sx={{
+							borderTop: "1px solid #e5e5e5",
+							bgcolor: "white",
+							px: 4,
+							py: 3,
+						}}
+					>
+						<Box
+							sx={{
+								display: "flex",
+								gap: 2,
+								alignItems: "flex-end",
+								maxWidth: "800px",
+								mx: "auto",
+							}}
+						>
+							<TextField
+								fullWidth
+								multiline
+								maxRows={4}
+								placeholder="Message PDF Chat Assistant..."
+								value={input}
+								onChange={(e) => setInput(e.target.value)}
+								onKeyDown={(e) => {
+									if (
+										e.key === "Enter" &&
+										!e.shiftKey &&
+										!loading &&
+										pdfUploaded
+									) {
+										e.preventDefault();
+										handleSend();
+									}
+								}}
+								disabled={loading || !pdfUploaded}
+								variant="outlined"
+								sx={{
+									"& .MuiOutlinedInput-root": {
+										borderRadius: "12px",
+										bgcolor: "#f7f7f8",
+										border: "1px solid #e5e5e5",
+										"&:hover": {
+											borderColor: "#d0d0d0",
+										},
+										"&.Mui-focused": {
+											borderColor: "#10a37f",
+											boxShadow: "0 0 0 1px #10a37f",
+										},
+										"& fieldset": {
+											border: "none",
+										},
+									},
+									"& .MuiInputBase-input": {
+										fontSize: "16px",
+										py: 1.5,
+									},
+								}}
+							/>
+							<IconButton
+								onClick={handleSend}
+								disabled={loading || !input.trim() || !pdfUploaded}
+								sx={{
+									width: 40,
+									height: 40,
+									bgcolor:
+										input.trim() && pdfUploaded && !loading
+											? "#10a37f"
+											: "#e5e5e5",
+									color:
+										input.trim() && pdfUploaded && !loading
+											? "white"
+											: "#8e8ea0",
+									"&:hover": {
+										bgcolor:
+											input.trim() && pdfUploaded && !loading
+												? "#0d8f73"
+												: "#e5e5e5",
+									},
+									"&.Mui-disabled": {
+										bgcolor: "#e5e5e5",
+										color: "#8e8ea0",
+									},
+									borderRadius: "8px",
+								}}
+							>
+								<SendIcon sx={{ fontSize: 18 }} />
+							</IconButton>
+						</Box>
+					</Box>
+				</>
+			)}
+		</Box>
+	);
 }
